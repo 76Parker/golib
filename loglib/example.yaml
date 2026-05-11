@@ -1,0 +1,5 @@
+logger:
+  only_stdout: true
+  level: "info"
+  enable_caller: true
+  log_file: "./test.log"
