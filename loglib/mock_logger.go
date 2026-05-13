@@ -1,31 +1,42 @@
 package loglib
 
-import "log/slog"
+import (
+	"log/slog"
+	"os"
+)
 
 type MockLogger struct {
-	slog *slog.Logger
+	Slog *slog.Logger
+}
+
+func NewMockLogger() *MockLogger {
+
+	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})
+	return &MockLogger{
+		Slog: slog.New(h),
+	}
 }
 
 func (l *MockLogger) Info(msg string, args ...any) {
-	l.slog.Info(msg, args...)
+	l.Slog.Info(msg, args...)
 }
 func (l *MockLogger) Error(msg string, args ...any) {
-	l.slog.Error(msg, args...)
+	l.Slog.Error(msg, args...)
 }
 func (l *MockLogger) Debug(msg string, args ...any) {
-	l.slog.Debug(msg, args...)
+	l.Slog.Debug(msg, args...)
 }
 func (l *MockLogger) Warn(msg string, args ...any) {
-	l.slog.Warn(msg, args...)
+	l.Slog.Warn(msg, args...)
 }
 
 func (l *MockLogger) With(args ...any) Logger {
 	return &MockLogger{
-		slog: l.slog.With(args...),
+		Slog: l.Slog.With(args...),
 	}
 }
 func (l *MockLogger) WithGroup(name string) Logger {
 	return &Slog{
-		slog: l.slog.WithGroup(name),
+		slog: l.Slog.WithGroup(name),
 	}
 }
