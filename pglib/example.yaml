@@ -1,0 +1,14 @@
+postgres:
+  host: "localhost"
+  port: 5432
+  database: "app"
+  ssl: "disable"
+  username: "postgres"
+  password: "postgres"
+  pool_config:
+    max_connections: 10
+    min_connections: 2
+    max_connection_lifetime: "1h"
+    max_conn_idle_time: "30m"
+    health_check_period: "1m"
+    connect_timeout: "10s"
