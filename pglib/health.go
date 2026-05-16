@@ -3,8 +3,8 @@ package pglib
 import (
 	"context"
 
+	"github.com/76Parker/golib/health"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mast-se/go-lib/health"
 )
 
 type HealthChecker struct {
