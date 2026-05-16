@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -17,10 +18,19 @@ var (
 )
 
 type SlogConfig struct {
-	Level        string `yaml:"level" validate:"required"`
-	OnlyStdout   bool   `yaml:"only_stdout"`
-	LogFile      string `yaml:"log_file" validate:"required"`
-	EnableCaller bool   `yaml:"enable_caller"`
+	Level        string   `yaml:"level" validate:"required"`
+	OnlyStdout   bool     `yaml:"only_stdout"`
+	LogFile      string   `yaml:"log_file"`
+	EnableCaller bool     `yaml:"enable_caller"`
+	Rotation     Rotation `yaml:"rotation"`
+}
+
+type Rotation struct {
+	MaxSizeMB  int  `yaml:"max_size_mb"`
+	MaxAgeDays int  `yaml:"max_age_days"`
+	MaxBackups int  `yaml:"max_backups"`
+	LocalTime  bool `yaml:"local_time"`
+	Compress   bool `yaml:"compress"`
 }
 
 type Logger interface {
@@ -54,7 +64,7 @@ func NewSlog(cfg SlogConfig) (*Slog, error) {
 			slog:       s,
 		}, nil
 	}
-	fileHandler, closer, err := fileHandler(cfg.LogFile, cfg.EnableCaller, lvl)
+	fileHandler, closer, err := fileHandler(cfg.LogFile, cfg.EnableCaller, lvl, cfg.Rotation)
 	if err != nil {
 		return nil, err
 	}
@@ -83,25 +93,31 @@ func (l *Slog) Warn(msg string, args ...any) {
 
 func (l *Slog) With(args ...any) Logger {
 	return &Slog{
-		slog: l.slog.With(args...),
-	}
-}
-func (l *Slog) WithGroup(name string) Logger {
-	return &Slog{
-		slog: l.slog.WithGroup(name),
+		onlyStdout: l.onlyStdout,
+		closer:     l.closer,
+		closeOnce:  l.closeOnce,
+		slog:       l.slog.With(args...),
 	}
 }
 
-func (l *Slog) Close() {
-	if l.closer != nil {
-		l.closeOnce.Do(func() {
-			if err := l.closer.Close(); err != nil {
-				panic(err)
-			}
-		})
-		return
+func (l *Slog) WithGroup(name string) Logger {
+	return &Slog{
+		onlyStdout: l.onlyStdout,
+		closer:     l.closer,
+		closeOnce:  l.closeOnce,
+		slog:       l.slog.WithGroup(name),
 	}
-	return
+}
+
+func (l *Slog) Close() error {
+	if l.closer == nil {
+		return nil
+	}
+	var closeErr error
+	l.closeOnce.Do(func() {
+		closeErr = l.closer.Close()
+	})
+	return closeErr
 }
 
 func consoleHandler(enableCaller bool, level slog.Level) slog.Handler {
@@ -112,12 +128,26 @@ func consoleHandler(enableCaller bool, level slog.Level) slog.Handler {
 	})
 }
 
-func fileHandler(fileName string, enableCaller bool, level slog.Level) (slog.Handler, io.Closer, error) {
-	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
-	if err != nil {
-		return nil, nil, err
+func fileHandler(
+	fileName string,
+	enableCaller bool,
+	level slog.Level,
+	rotation Rotation,
+) (slog.Handler, io.Closer, error) {
+	if fileName == "" {
+		return nil, nil, errors.New("log file path is empty")
 	}
-	return slog.NewJSONHandler(file, &slog.HandlerOptions{
+
+	writer := &lumberjack.Logger{
+		Filename:   fileName,
+		MaxSize:    rotation.MaxSizeMB,  // megabytes
+		MaxAge:     rotation.MaxAgeDays, // days
+		MaxBackups: rotation.MaxBackups,
+		LocalTime:  rotation.LocalTime,
+		Compress:   rotation.Compress,
+	}
+
+	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
 		AddSource: enableCaller,
 		Level:     level,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
@@ -126,7 +156,9 @@ func fileHandler(fileName string, enableCaller bool, level slog.Level) (slog.Han
 			}
 			return a
 		},
-	}), file, nil
+	})
+
+	return handler, writer, nil
 }
 
 func stringToLevel(s string) (slog.Level, bool) {
